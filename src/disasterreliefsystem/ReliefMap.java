@@ -12,12 +12,15 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.ResultSet;
+import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import javax.swing.DefaultComboBoxModel;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
 import javax.swing.JTable;
@@ -29,6 +32,27 @@ import javax.swing.table.DefaultTableModel;
  * @author Neil
  */
 public class ReliefMap extends javax.swing.JFrame {
+
+    class DonationItem {
+
+        private final int itemId;
+        private final String displayText;
+
+        public DonationItem(int itemId, String name, Date expirationDate) {
+            this.itemId = itemId;
+            this.displayText = name + (expirationDate != null
+                    ? " (Exp: " + new SimpleDateFormat("yyyy-MM-dd").format(expirationDate) + ")" : "");
+        }
+
+        public int getItemId() {
+            return itemId;
+        }
+
+        @Override
+        public String toString() {
+            return displayText;
+        }
+    }
 
     class EvacueeSearchResult {
 
@@ -53,17 +77,19 @@ public class ReliefMap extends javax.swing.JFrame {
             return name; // This determines what's shown in JList
         }
     }
-    private class RoomInfo {
-    int roomID;
-    int maxCapacity;
-    int currentOccupants;
 
-    public RoomInfo(int roomID, int maxCapacity, int currentOccupants) {
-        this.roomID = roomID;
-        this.maxCapacity = maxCapacity;
-        this.currentOccupants = currentOccupants;
+    private class RoomInfo {
+
+        int roomID;
+        int maxCapacity;
+        int currentOccupants;
+
+        public RoomInfo(int roomID, int maxCapacity, int currentOccupants) {
+            this.roomID = roomID;
+            this.maxCapacity = maxCapacity;
+            this.currentOccupants = currentOccupants;
+        }
     }
-}
 
     private int selectedCenterID = 1;
     private int selectedRoomID = -1;
@@ -73,6 +99,7 @@ public class ReliefMap extends javax.swing.JFrame {
      */
     public ReliefMap() {
         initComponents();
+        setupCustomComboBox();
         setLocationRelativeTo(null);
         jTable1.setDefaultRenderer(Object.class, new CustomTableCellRenderer());
         populatetable();
@@ -86,10 +113,17 @@ public class ReliefMap extends javax.swing.JFrame {
 
     }
 
+    private void setupCustomComboBox() {
+        // Set custom model and renderer
+        jComboBox4.setModel(new DefaultComboBoxModel<DonationItem>());
+        jComboBox4.setRenderer(new DonationItemRenderer());
+        populateDonationComboBox();
+    }
+
     //design
     private void updateButtonVisibility() {
         int selectedIndex = jTabbedPane1.getSelectedIndex();
-        jButton3.setVisible(selectedIndex == 2 || selectedIndex == 3|| selectedIndex == 4);
+        jButton3.setVisible(selectedIndex == 2 || selectedIndex == 3 || selectedIndex == 4);
     }
 
     private class CustomTableCellRenderer extends DefaultTableCellRenderer {
@@ -184,7 +218,7 @@ public class ReliefMap extends javax.swing.JFrame {
         String[] columnNames = {"Donation Item", "Category", "Quantity", "Expiration Date"};
         DefaultTableModel tableModel = new DefaultTableModel(columnNames, 0);
         try (Connection conn = DatabaseConnection.getConnection()) {
-            String query = "SELECT Name, Category, CurrentQuantity, ExpirationDate FROM donations WHERE CenterID = ?";
+            String query = "SELECT Name, Category, CurrentQuantity, ExpirationDate FROM donations WHERE CenterID = ? ORDER BY ExpirationDate ASC";
             PreparedStatement pst = conn.prepareStatement(query);
             pst.setInt(1, selectedCenterID);
             ResultSet rs = pst.executeQuery();
@@ -240,6 +274,7 @@ public class ReliefMap extends javax.swing.JFrame {
             e.printStackTrace();
         }
     }
+
     private void countdonation() {
         try (Connection conn = DatabaseConnection.getConnection()) {
             String perishablequery = "SELECT COUNT(*) AS perishablefood FROM donations WHERE CenterID = ? AND Category = 'PERISHABLE'";
@@ -267,201 +302,200 @@ public class ReliefMap extends javax.swing.JFrame {
     }
 
     private void countResidentsInRoom() {
-    try (Connection conn = DatabaseConnection.getConnection()) {
-        String query = "SELECT COUNT(*) AS residentCount FROM Evacuees WHERE RoomID = ?";
-        PreparedStatement pst = conn.prepareStatement(query);
-        pst.setInt(1, selectedRoomID);  // Ensure selectedRoomID is the room's ID you want to count residents for
-        ResultSet rs = pst.executeQuery();
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            String query = "SELECT COUNT(*) AS residentCount FROM Evacuees WHERE RoomID = ?";
+            PreparedStatement pst = conn.prepareStatement(query);
+            pst.setInt(1, selectedRoomID);  // Ensure selectedRoomID is the room's ID you want to count residents for
+            ResultSet rs = pst.executeQuery();
 
-        if (rs.next()) {
-            int residentCount = rs.getInt("residentCount");
-            jLabel33.setText(String.valueOf(residentCount)); // Update your UI component accordingly
+            if (rs.next()) {
+                int residentCount = rs.getInt("residentCount");
+                jLabel33.setText(String.valueOf(residentCount)); // Update your UI component accordingly
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
-    } catch (SQLException e) {
-        e.printStackTrace();
     }
-}
 
+    private void loadRoomsForCenter() {
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            String query = "SELECT RoomID, RoomNumber, MaxCapacity, CurrentOccupants FROM Rooms WHERE CenterID = ?";
+            PreparedStatement pst = conn.prepareStatement(query);
+            pst.setInt(1, selectedCenterID);
+            ResultSet rs = pst.executeQuery();
 
-   private void loadRoomsForCenter() {
-    try (Connection conn = DatabaseConnection.getConnection()) {
-        String query = "SELECT RoomID, RoomNumber, MaxCapacity, CurrentOccupants FROM Rooms WHERE CenterID = ?";
-        PreparedStatement pst = conn.prepareStatement(query);
-        pst.setInt(1, selectedCenterID);
-        ResultSet rs = pst.executeQuery();
+            Map<Integer, RoomInfo> roomNumberToInfo = new HashMap<>();
+            while (rs.next()) {
+                int roomID = rs.getInt("RoomID");
+                int roomNumber = rs.getInt("RoomNumber");
+                int maxCap = rs.getInt("MaxCapacity");
+                int currentOcc = rs.getInt("CurrentOccupants");
+                roomNumberToInfo.put(roomNumber, new RoomInfo(roomID, maxCap, currentOcc));
+            }
 
-        Map<Integer, RoomInfo> roomNumberToInfo = new HashMap<>();
-        while (rs.next()) {
-            int roomID = rs.getInt("RoomID");
-            int roomNumber = rs.getInt("RoomNumber");
-            int maxCap = rs.getInt("MaxCapacity");
-            int currentOcc = rs.getInt("CurrentOccupants");
-            roomNumberToInfo.put(roomNumber, new RoomInfo(roomID, maxCap, currentOcc));
+            assignRoomIDsToButtons(roomNumberToInfo);
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
-
-        assignRoomIDsToButtons(roomNumberToInfo);
-    } catch (SQLException e) {
-        e.printStackTrace();
     }
-}
 
-   private void assignRoomIDsToButtons(Map<Integer, RoomInfo> roomNumberToInfo)  {
+    private void assignRoomIDsToButtons(Map<Integer, RoomInfo> roomNumberToInfo) {
         // Example: jButton8 is labeled "ROOM 1" → RoomNumber=1
         resetRoomButtons();
 
         // Room 1 (jButton8)
-       RoomInfo roomInfo = roomNumberToInfo.get(1);
-    if (roomInfo != null) {
-        jButton8.setActionCommand(String.valueOf(roomInfo.roomID));
-        jButton8.setEnabled(true);
-        jButton8.setText("ROOM 1");
-        jButton8.setBackground(roomInfo.currentOccupants >= roomInfo.maxCapacity ? Color.RED : Color.GREEN);
-        jButton8.setOpaque(true);
-        jButton8.setBorderPainted(false);
-    } else {
-        jButton8.setEnabled(false);
-        jButton8.setText("ROOM 1 (Unavailable)");
-    }
+        RoomInfo roomInfo = roomNumberToInfo.get(1);
+        if (roomInfo != null) {
+            jButton8.setActionCommand(String.valueOf(roomInfo.roomID));
+            jButton8.setEnabled(true);
+            jButton8.setText("ROOM 1");
+            jButton8.setBackground(roomInfo.currentOccupants >= roomInfo.maxCapacity ? Color.RED : Color.GREEN);
+            jButton8.setOpaque(true);
+            jButton8.setBorderPainted(false);
+        } else {
+            jButton8.setEnabled(false);
+            jButton8.setText("ROOM 1 (Unavailable)");
+        }
 
         // Room 2 (jButton9)
         roomInfo = roomNumberToInfo.get(2);
-    if (roomInfo != null) {
-        jButton9.setActionCommand(String.valueOf(roomInfo.roomID));
-        jButton9.setEnabled(true);
-        jButton9.setText("ROOM 2");
-        jButton9.setBackground(roomInfo.currentOccupants >= roomInfo.maxCapacity ? Color.RED : Color.GREEN);
-        jButton9.setOpaque(true);
-        jButton9.setBorderPainted(false);
-    } else {
-        jButton9.setEnabled(false);
-        jButton9.setText("ROOM 2 (Unavailable)");
-    }
+        if (roomInfo != null) {
+            jButton9.setActionCommand(String.valueOf(roomInfo.roomID));
+            jButton9.setEnabled(true);
+            jButton9.setText("ROOM 2");
+            jButton9.setBackground(roomInfo.currentOccupants >= roomInfo.maxCapacity ? Color.RED : Color.GREEN);
+            jButton9.setOpaque(true);
+            jButton9.setBorderPainted(false);
+        } else {
+            jButton9.setEnabled(false);
+            jButton9.setText("ROOM 2 (Unavailable)");
+        }
 
         // Room 3 (jButton10)
         roomInfo = roomNumberToInfo.get(3);
-    if (roomInfo != null) {
-        jButton10.setActionCommand(String.valueOf(roomInfo.roomID));
-        jButton10.setEnabled(true);
-        jButton10.setText("ROOM 3");
-        jButton10.setBackground(roomInfo.currentOccupants >= roomInfo.maxCapacity ? Color.RED : Color.GREEN);
-        jButton10.setOpaque(true);
-        jButton10.setBorderPainted(false);
-    } else {
-        jButton10.setEnabled(false);
-        jButton10.setText("ROOM 3 (Unavailable)");
-    }
+        if (roomInfo != null) {
+            jButton10.setActionCommand(String.valueOf(roomInfo.roomID));
+            jButton10.setEnabled(true);
+            jButton10.setText("ROOM 3");
+            jButton10.setBackground(roomInfo.currentOccupants >= roomInfo.maxCapacity ? Color.RED : Color.GREEN);
+            jButton10.setOpaque(true);
+            jButton10.setBorderPainted(false);
+        } else {
+            jButton10.setEnabled(false);
+            jButton10.setText("ROOM 3 (Unavailable)");
+        }
 
         // Room 4 (jButton11)
-         roomInfo = roomNumberToInfo.get(4);
-    if (roomInfo != null) {
-        jButton11.setActionCommand(String.valueOf(roomInfo.roomID));
-        jButton11.setEnabled(true);
-        jButton11.setText("ROOM 4");
-        jButton11.setBackground(roomInfo.currentOccupants >= roomInfo.maxCapacity ? Color.RED : Color.GREEN);
-        jButton11.setOpaque(true);
-        jButton11.setBorderPainted(false);
-    } else {
-        jButton11.setEnabled(false);
-        jButton11.setText("ROOM 4 (Unavailable)");
-    }
+        roomInfo = roomNumberToInfo.get(4);
+        if (roomInfo != null) {
+            jButton11.setActionCommand(String.valueOf(roomInfo.roomID));
+            jButton11.setEnabled(true);
+            jButton11.setText("ROOM 4");
+            jButton11.setBackground(roomInfo.currentOccupants >= roomInfo.maxCapacity ? Color.RED : Color.GREEN);
+            jButton11.setOpaque(true);
+            jButton11.setBorderPainted(false);
+        } else {
+            jButton11.setEnabled(false);
+            jButton11.setText("ROOM 4 (Unavailable)");
+        }
 
         // Room 5 (jButton12)
         roomInfo = roomNumberToInfo.get(5);
-    if (roomInfo != null) {
-        jButton12.setActionCommand(String.valueOf(roomInfo.roomID));
-        jButton12.setEnabled(true);
-        jButton12.setText("ROOM 5");
-        jButton12.setBackground(roomInfo.currentOccupants >= roomInfo.maxCapacity ? Color.RED : Color.GREEN);
-        jButton12.setOpaque(true);
-        jButton12.setBorderPainted(false);
-    } else {
-        jButton12.setEnabled(false);
-        jButton12.setText("ROOM 5 (Unavailable)");
-    }
+        if (roomInfo != null) {
+            jButton12.setActionCommand(String.valueOf(roomInfo.roomID));
+            jButton12.setEnabled(true);
+            jButton12.setText("ROOM 5");
+            jButton12.setBackground(roomInfo.currentOccupants >= roomInfo.maxCapacity ? Color.RED : Color.GREEN);
+            jButton12.setOpaque(true);
+            jButton12.setBorderPainted(false);
+        } else {
+            jButton12.setEnabled(false);
+            jButton12.setText("ROOM 5 (Unavailable)");
+        }
 
         // Room 6 (jButton13)
-         roomInfo = roomNumberToInfo.get(6);
-    if (roomInfo != null) {
-        jButton13.setActionCommand(String.valueOf(roomInfo.roomID));
-        jButton13.setEnabled(true);
-        jButton13.setText("ROOM 6");
-        jButton13.setBackground(roomInfo.currentOccupants >= roomInfo.maxCapacity ? Color.RED : Color.GREEN);
-        jButton13.setOpaque(true);
-        jButton13.setBorderPainted(false);
-    } else {
-        jButton13.setEnabled(false);
-        jButton13.setText("ROOM 6 (Unavailable)");
-    }
+        roomInfo = roomNumberToInfo.get(6);
+        if (roomInfo != null) {
+            jButton13.setActionCommand(String.valueOf(roomInfo.roomID));
+            jButton13.setEnabled(true);
+            jButton13.setText("ROOM 6");
+            jButton13.setBackground(roomInfo.currentOccupants >= roomInfo.maxCapacity ? Color.RED : Color.GREEN);
+            jButton13.setOpaque(true);
+            jButton13.setBorderPainted(false);
+        } else {
+            jButton13.setEnabled(false);
+            jButton13.setText("ROOM 6 (Unavailable)");
+        }
 
         // Room 7 (jButton14)
-          roomInfo = roomNumberToInfo.get(7);
-    if (roomInfo != null) {
-        jButton14.setActionCommand(String.valueOf(roomInfo.roomID));
-        jButton14.setEnabled(true);
-        jButton14.setText("ROOM 7");
-        jButton14.setBackground(roomInfo.currentOccupants >= roomInfo.maxCapacity ? Color.RED : Color.GREEN);
-        jButton14.setOpaque(true);
-        jButton14.setBorderPainted(false);
-    } else {
-        jButton14.setEnabled(false);
-        jButton14.setText("ROOM 7 (Unavailable)");
-    }
+        roomInfo = roomNumberToInfo.get(7);
+        if (roomInfo != null) {
+            jButton14.setActionCommand(String.valueOf(roomInfo.roomID));
+            jButton14.setEnabled(true);
+            jButton14.setText("ROOM 7");
+            jButton14.setBackground(roomInfo.currentOccupants >= roomInfo.maxCapacity ? Color.RED : Color.GREEN);
+            jButton14.setOpaque(true);
+            jButton14.setBorderPainted(false);
+        } else {
+            jButton14.setEnabled(false);
+            jButton14.setText("ROOM 7 (Unavailable)");
+        }
 
         // Room 8 (jButton15)
-          roomInfo = roomNumberToInfo.get(8);
-    if (roomInfo != null) {
-        jButton15.setActionCommand(String.valueOf(roomInfo.roomID));
-        jButton15.setEnabled(true);
-        jButton15.setText("ROOM 8");
-        jButton15.setBackground(roomInfo.currentOccupants >= roomInfo.maxCapacity ? Color.RED : Color.GREEN);
-        jButton15.setOpaque(true);
-        jButton15.setBorderPainted(false);
-    } else {
-        jButton15.setEnabled(false);
-        jButton15.setText("ROOM 8 (Unavailable)");
-    }
+        roomInfo = roomNumberToInfo.get(8);
+        if (roomInfo != null) {
+            jButton15.setActionCommand(String.valueOf(roomInfo.roomID));
+            jButton15.setEnabled(true);
+            jButton15.setText("ROOM 8");
+            jButton15.setBackground(roomInfo.currentOccupants >= roomInfo.maxCapacity ? Color.RED : Color.GREEN);
+            jButton15.setOpaque(true);
+            jButton15.setBorderPainted(false);
+        } else {
+            jButton15.setEnabled(false);
+            jButton15.setText("ROOM 8 (Unavailable)");
+        }
 
         // Room 9 (jButton16)
-          roomInfo = roomNumberToInfo.get(9);
-    if (roomInfo != null) {
-        jButton16.setActionCommand(String.valueOf(roomInfo.roomID));
-        jButton16.setEnabled(true);
-        jButton16.setText("ROOM 9");
-        jButton16.setBackground(roomInfo.currentOccupants >= roomInfo.maxCapacity ? Color.RED : Color.GREEN);
-        jButton16.setOpaque(true);
-        jButton16.setBorderPainted(false);
-    } else {
-        jButton16.setEnabled(false);
-        jButton16.setText("ROOM 9 (Unavailable)");
-    }
+        roomInfo = roomNumberToInfo.get(9);
+        if (roomInfo != null) {
+            jButton16.setActionCommand(String.valueOf(roomInfo.roomID));
+            jButton16.setEnabled(true);
+            jButton16.setText("ROOM 9");
+            jButton16.setBackground(roomInfo.currentOccupants >= roomInfo.maxCapacity ? Color.RED : Color.GREEN);
+            jButton16.setOpaque(true);
+            jButton16.setBorderPainted(false);
+        } else {
+            jButton16.setEnabled(false);
+            jButton16.setText("ROOM 9 (Unavailable)");
+        }
 
         // Room 10 (jButton17)
-          roomInfo = roomNumberToInfo.get(10);
-    if (roomInfo != null) {
-        jButton17.setActionCommand(String.valueOf(roomInfo.roomID));
-        jButton17.setEnabled(true);
-        jButton17.setText("ROOM 10");
-        jButton17.setBackground(roomInfo.currentOccupants >= roomInfo.maxCapacity ? Color.RED : Color.GREEN);
-        jButton17.setOpaque(true);
-        jButton17.setBorderPainted(false);
-    } else {
-        jButton17.setEnabled(false);
-        jButton17.setText("ROOM 10 (Unavailable)");
-    }
+        roomInfo = roomNumberToInfo.get(10);
+        if (roomInfo != null) {
+            jButton17.setActionCommand(String.valueOf(roomInfo.roomID));
+            jButton17.setEnabled(true);
+            jButton17.setText("ROOM 10");
+            jButton17.setBackground(roomInfo.currentOccupants >= roomInfo.maxCapacity ? Color.RED : Color.GREEN);
+            jButton17.setOpaque(true);
+            jButton17.setBorderPainted(false);
+        } else {
+            jButton17.setEnabled(false);
+            jButton17.setText("ROOM 10 (Unavailable)");
+        }
 
         // Room 11 (jButton18)
-         roomInfo = roomNumberToInfo.get(11);
-    if (roomInfo != null) {
-        jButton18.setActionCommand(String.valueOf(roomInfo.roomID));
-        jButton18.setEnabled(true);
-        jButton18.setText("ROOM 11");
-        jButton18.setBackground(roomInfo.currentOccupants >= roomInfo.maxCapacity ? Color.RED : Color.GREEN);
-        jButton18.setOpaque(true);
-        jButton18.setBorderPainted(false);
-    } else {
-        jButton18.setEnabled(false);
-        jButton18.setText("ROOM 11 (Unavailable)");
-    }
+        roomInfo = roomNumberToInfo.get(11);
+        if (roomInfo != null) {
+            jButton18.setActionCommand(String.valueOf(roomInfo.roomID));
+            jButton18.setEnabled(true);
+            jButton18.setText("ROOM 11");
+            jButton18.setBackground(roomInfo.currentOccupants >= roomInfo.maxCapacity ? Color.RED : Color.GREEN);
+            jButton18.setOpaque(true);
+            jButton18.setBorderPainted(false);
+        } else {
+            jButton18.setEnabled(false);
+            jButton18.setText("ROOM 11 (Unavailable)");
+        }
 
     }
 
@@ -591,39 +625,140 @@ public class ReliefMap extends javax.swing.JFrame {
 // this is for the office
 
     private void fetchEvacuees() {
-    String searchText = jTextField4.getText().trim();
-    DefaultListModel<String> listModel = new DefaultListModel<>();
-    List<EvacueeSearchResult> dataCache = new ArrayList<>();
+        String searchText = jTextField4.getText().trim();
+        DefaultListModel<String> listModel = new DefaultListModel<>();
+        List<EvacueeSearchResult> dataCache = new ArrayList<>();
 
-    if (!searchText.isEmpty()) {
+        if (!searchText.isEmpty()) {
+            try (Connection conn = DatabaseConnection.getConnection()) {
+                String query = "SELECT e.Name, r.RoomNumber "
+                        + "FROM Evacuees e "
+                        + "JOIN Rooms r ON e.RoomID = r.RoomID "
+                        + "JOIN EvacuationCenters c ON r.CenterID = c.CenterID "
+                        + "WHERE e.Name LIKE ? AND c.CenterID = ?"; // Added center filter
+
+                PreparedStatement pst = conn.prepareStatement(query);
+                pst.setString(1, "%" + searchText + "%");
+                pst.setInt(2, selectedCenterID); // Use the current center ID
+                ResultSet rs = pst.executeQuery();
+
+                while (rs.next()) {
+                    EvacueeSearchResult result = new EvacueeSearchResult(
+                            rs.getString("Name"),
+                            rs.getInt("RoomNumber")
+                    );
+                    dataCache.add(result);
+                    listModel.addElement(result.getName());
+                }
+
+                jList1.putClientProperty("evacueeData", dataCache);
+            } catch (SQLException ex) {
+                ex.printStackTrace();
+            }
+        }
+        jList1.setModel(listModel);
+    }
+
+    private void populateDonationComboBox() {
+        DefaultComboBoxModel<DonationItem> model = (DefaultComboBoxModel<DonationItem>) jComboBox4.getModel();
+        model.removeAllElements();
         try (Connection conn = DatabaseConnection.getConnection()) {
-            String query = "SELECT e.Name, r.RoomNumber "
-                    + "FROM Evacuees e "
-                    + "JOIN Rooms r ON e.RoomID = r.RoomID "
-                    + "JOIN EvacuationCenters c ON r.CenterID = c.CenterID "
-                    + "WHERE e.Name LIKE ? AND c.CenterID = ?"; // Added center filter
-                    
+            String query = "SELECT ItemID, Name, ExpirationDate, CurrentQuantity "
+                    + "FROM Donations "
+                    + "WHERE (ExpirationDate > CURDATE() OR ExpirationDate IS NULL) "
+                    + "AND CurrentQuantity > 0 "
+                    + "AND CenterID = ?";
+
             PreparedStatement pst = conn.prepareStatement(query);
-            pst.setString(1, "%" + searchText + "%");
-            pst.setInt(2, selectedCenterID); // Use the current center ID
+            pst.setInt(1, selectedCenterID);
             ResultSet rs = pst.executeQuery();
 
             while (rs.next()) {
-                EvacueeSearchResult result = new EvacueeSearchResult(
-                    rs.getString("Name"),
-                    rs.getInt("RoomNumber")
+                DonationItem item = new DonationItem(
+                        rs.getInt("ItemID"),
+                        rs.getString("Name"),
+                        rs.getDate("ExpirationDate")
                 );
-                dataCache.add(result);
-                listModel.addElement(result.getName());
+                model.addElement(item);
             }
-
-            jList1.putClientProperty("evacueeData", dataCache);
-        } catch (SQLException ex) {
-            ex.printStackTrace();
+            jComboBox4.setModel(model);
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
     }
-    jList1.setModel(listModel);
-}
+
+    private void jButton21ActionPerformed(java.awt.event.ActionEvent evt) {
+        DonationItem selectedItem = (DonationItem) jComboBox4.getSelectedItem();
+        if (selectedItem == null) {
+            JOptionPane.showMessageDialog(this, "Please select an item!");
+            return;
+        }
+
+        int quantityToUse = (Integer) jSpinner1.getValue();
+        if (quantityToUse <= 0) {
+            JOptionPane.showMessageDialog(this, "Quantity must be positive!");
+            return;
+        }
+
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            conn.setAutoCommit(false); // Start transaction
+
+            // Check current quantity
+            String checkQuery = "SELECT CurrentQuantity, ExpirationDate "
+                    + "FROM Donations WHERE ItemID = ?";
+            PreparedStatement checkPst = conn.prepareStatement(checkQuery);
+            checkPst.setInt(1, selectedItem.getItemId());
+            ResultSet rs = checkPst.executeQuery();
+
+            if (rs.next()) {
+                int currentQty = rs.getInt("CurrentQuantity");
+                Date expirationDate = rs.getDate("ExpirationDate");
+
+                // Validate quantity and expiration
+                if (currentQty < quantityToUse) {
+                    JOptionPane.showMessageDialog(this, "Not enough stock available!");
+                    return;
+                }
+
+                if (expirationDate != null && expirationDate.before(new Date())) {
+                    JOptionPane.showMessageDialog(this, "Item has expired!");
+                    return;
+                }
+            }
+
+            // Record usage
+            String insertQuery = "INSERT INTO DailySupplyUsage "
+                    + "(ItemID, CenterID, QuantityUsed, UsageDate) "
+                    + "VALUES (?, ?, ?, CURDATE())";
+            PreparedStatement insertPst = conn.prepareStatement(insertQuery);
+            insertPst.setInt(1, selectedItem.getItemId());
+            insertPst.setInt(2, selectedCenterID);
+            insertPst.setInt(3, quantityToUse);
+            insertPst.executeUpdate();
+
+            // Update donation quantity
+            String updateQuery = "UPDATE Donations "
+                    + "SET CurrentQuantity = CurrentQuantity - ? "
+                    + "WHERE ItemID = ?";
+            PreparedStatement updatePst = conn.prepareStatement(updateQuery);
+            updatePst.setInt(1, quantityToUse);
+            updatePst.setInt(2, selectedItem.getItemId());
+            int affectedRows = updatePst.executeUpdate();
+
+            if (affectedRows > 0) {
+                conn.commit();
+                JOptionPane.showMessageDialog(this, "Usage recorded successfully!");
+                populateDonationComboBox(); // Refresh combo box
+                populatetable(); // Refresh donations table
+            } else {
+                conn.rollback();
+                JOptionPane.showMessageDialog(this, "Failed to record usage!");
+            }
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+            JOptionPane.showMessageDialog(this, "Database error: " + ex.getMessage());
+        }
+    }
 
     /**
      * This method is called from within the constructor to initialize the form.
@@ -711,10 +846,18 @@ public class ReliefMap extends javax.swing.JFrame {
         jPanel10 = new javax.swing.JPanel();
         jLabel31 = new javax.swing.JLabel();
         jLabel33 = new javax.swing.JLabel();
+        jLabel36 = new javax.swing.JLabel();
         jPanel7 = new javax.swing.JPanel();
         jPanel8 = new javax.swing.JPanel();
         jPanel9 = new javax.swing.JPanel();
         jLabel30 = new javax.swing.JLabel();
+        jComboBox4 = new javax.swing.JComboBox<>();
+        jSpinner1 = new javax.swing.JSpinner();
+        jButton21 = new javax.swing.JButton();
+        jLabel34 = new javax.swing.JLabel();
+        jLabel35 = new javax.swing.JLabel();
+        jPanel11 = new javax.swing.JPanel();
+        jMonthChooser1 = new com.toedter.calendar.JMonthChooser();
         jLabel32 = new javax.swing.JLabel();
         jScrollPane4 = new javax.swing.JScrollPane();
         jList1 = new javax.swing.JList<>();
@@ -1206,18 +1349,25 @@ public class ReliefMap extends javax.swing.JFrame {
         jLabel33.setFont(new java.awt.Font("Segoe UI Black", 1, 48)); // NOI18N
         jLabel33.setText("0");
 
+        jLabel36.setFont(new java.awt.Font("Segoe UI Black", 1, 48)); // NOI18N
+        jLabel36.setText("/5");
+
         javax.swing.GroupLayout jPanel10Layout = new javax.swing.GroupLayout(jPanel10);
         jPanel10.setLayout(jPanel10Layout);
         jPanel10Layout.setHorizontalGroup(
             jPanel10Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel10Layout.createSequentialGroup()
                 .addContainerGap(146, Short.MAX_VALUE)
-                .addComponent(jLabel31, javax.swing.GroupLayout.PREFERRED_SIZE, 114, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addGap(140, 140, 140))
-            .addGroup(jPanel10Layout.createSequentialGroup()
-                .addGap(179, 179, 179)
-                .addComponent(jLabel33, javax.swing.GroupLayout.PREFERRED_SIZE, 43, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                .addGroup(jPanel10Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                    .addGroup(jPanel10Layout.createSequentialGroup()
+                        .addGap(16, 16, 16)
+                        .addComponent(jLabel33)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addComponent(jLabel36)
+                        .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                    .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel10Layout.createSequentialGroup()
+                        .addComponent(jLabel31, javax.swing.GroupLayout.PREFERRED_SIZE, 114, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addGap(140, 140, 140))))
         );
         jPanel10Layout.setVerticalGroup(
             jPanel10Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -1225,7 +1375,9 @@ public class ReliefMap extends javax.swing.JFrame {
                 .addGap(16, 16, 16)
                 .addComponent(jLabel31, javax.swing.GroupLayout.PREFERRED_SIZE, 56, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jLabel33, javax.swing.GroupLayout.PREFERRED_SIZE, 41, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGroup(jPanel10Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(jLabel33, javax.swing.GroupLayout.PREFERRED_SIZE, 41, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(jLabel36))
                 .addContainerGap(96, Short.MAX_VALUE))
         );
 
@@ -1335,21 +1487,75 @@ public class ReliefMap extends javax.swing.JFrame {
 
         jLabel30.setText("Daily Supplies:");
 
+        jButton21.setText("Submit");
+
+        jLabel34.setText("Items:");
+
+        jLabel35.setText("Quantity:");
+
+        jPanel11.setBorder(javax.swing.BorderFactory.createMatteBorder(3, 3, 3, 3, new java.awt.Color(0, 0, 0)));
+
+        javax.swing.GroupLayout jPanel11Layout = new javax.swing.GroupLayout(jPanel11);
+        jPanel11.setLayout(jPanel11Layout);
+        jPanel11Layout.setHorizontalGroup(
+            jPanel11Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGap(0, 0, Short.MAX_VALUE)
+        );
+        jPanel11Layout.setVerticalGroup(
+            jPanel11Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGap(0, 496, Short.MAX_VALUE)
+        );
+
         javax.swing.GroupLayout jPanel9Layout = new javax.swing.GroupLayout(jPanel9);
         jPanel9.setLayout(jPanel9Layout);
         jPanel9Layout.setHorizontalGroup(
             jPanel9Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(jPanel9Layout.createSequentialGroup()
-                .addContainerGap()
-                .addComponent(jLabel30, javax.swing.GroupLayout.PREFERRED_SIZE, 79, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                .addGroup(jPanel9Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addGroup(jPanel9Layout.createSequentialGroup()
+                        .addGroup(jPanel9Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                            .addGroup(jPanel9Layout.createSequentialGroup()
+                                .addGap(17, 17, 17)
+                                .addGroup(jPanel9Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                    .addGroup(jPanel9Layout.createSequentialGroup()
+                                        .addGap(36, 36, 36)
+                                        .addComponent(jButton21))
+                                    .addComponent(jComboBox4, javax.swing.GroupLayout.PREFERRED_SIZE, 147, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                    .addComponent(jSpinner1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                    .addComponent(jLabel34, javax.swing.GroupLayout.PREFERRED_SIZE, 67, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                    .addComponent(jLabel35, javax.swing.GroupLayout.PREFERRED_SIZE, 55, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                            .addGroup(jPanel9Layout.createSequentialGroup()
+                                .addContainerGap()
+                                .addComponent(jLabel30, javax.swing.GroupLayout.PREFERRED_SIZE, 79, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                        .addGap(32, 32, 32))
+                    .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel9Layout.createSequentialGroup()
+                        .addComponent(jMonthChooser1, javax.swing.GroupLayout.PREFERRED_SIZE, 125, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)))
+                .addComponent(jPanel11, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                .addContainerGap())
         );
         jPanel9Layout.setVerticalGroup(
             jPanel9Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(jPanel9Layout.createSequentialGroup()
-                .addGap(14, 14, 14)
-                .addComponent(jLabel30)
-                .addContainerGap(391, Short.MAX_VALUE))
+                .addGroup(jPanel9Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addGroup(jPanel9Layout.createSequentialGroup()
+                        .addComponent(jLabel30)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addComponent(jMonthChooser1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addGap(88, 88, 88)
+                        .addComponent(jLabel34)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addComponent(jComboBox4, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addComponent(jLabel35)
+                        .addGap(4, 4, 4)
+                        .addComponent(jSpinner1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                        .addComponent(jButton21))
+                    .addGroup(jPanel9Layout.createSequentialGroup()
+                        .addGap(14, 14, 14)
+                        .addComponent(jPanel11, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                .addContainerGap(41, Short.MAX_VALUE))
         );
 
         jLabel32.setText("Search for a Person:");
@@ -1371,29 +1577,32 @@ public class ReliefMap extends javax.swing.JFrame {
         jPanel8.setLayout(jPanel8Layout);
         jPanel8Layout.setHorizontalGroup(
             jPanel8Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addComponent(jPanel9, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
             .addGroup(jPanel8Layout.createSequentialGroup()
-                .addGap(80, 80, 80)
+                .addGap(49, 49, 49)
                 .addGroup(jPanel8Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addComponent(jLabel32, javax.swing.GroupLayout.PREFERRED_SIZE, 123, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(jTextField4, javax.swing.GroupLayout.PREFERRED_SIZE, 194, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addGap(40, 40, 40)
+                    .addComponent(jTextField4, javax.swing.GroupLayout.PREFERRED_SIZE, 194, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(jLabel32, javax.swing.GroupLayout.PREFERRED_SIZE, 123, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addComponent(jScrollPane4, javax.swing.GroupLayout.PREFERRED_SIZE, 309, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addContainerGap(326, Short.MAX_VALUE))
+                .addContainerGap(391, Short.MAX_VALUE))
+            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel8Layout.createSequentialGroup()
+                .addContainerGap()
+                .addComponent(jPanel9, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                .addContainerGap())
         );
         jPanel8Layout.setVerticalGroup(
             jPanel8Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel8Layout.createSequentialGroup()
-                .addGap(31, 31, 31)
+                .addContainerGap()
                 .addGroup(jPanel8Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addGroup(jPanel8Layout.createSequentialGroup()
                         .addComponent(jLabel32)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                         .addComponent(jTextField4, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                    .addComponent(jScrollPane4, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 41, Short.MAX_VALUE)
+                    .addComponent(jScrollPane4, javax.swing.GroupLayout.PREFERRED_SIZE, 84, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 14, Short.MAX_VALUE)
                 .addComponent(jPanel9, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addGap(20, 20, 20))
+                .addContainerGap())
         );
 
         javax.swing.GroupLayout jPanel7Layout = new javax.swing.GroupLayout(jPanel7);
@@ -1619,6 +1828,8 @@ public class ReliefMap extends javax.swing.JFrame {
         countresident();
         countdonation();
         updateButtonVisibility();
+        jTextField4.setText("");
+        jList1.setModel(new DefaultListModel<>());
     }//GEN-LAST:event_jButton3ActionPerformed
 
     private void jTextField4KeyReleased(java.awt.event.KeyEvent evt) {//GEN-FIRST:event_jTextField4KeyReleased
@@ -1696,6 +1907,7 @@ public class ReliefMap extends javax.swing.JFrame {
     private javax.swing.JButton jButton19;
     private javax.swing.JButton jButton2;
     private javax.swing.JButton jButton20;
+    private javax.swing.JButton jButton21;
     private javax.swing.JButton jButton3;
     private javax.swing.JButton jButton4;
     private javax.swing.JButton jButton5;
@@ -1707,6 +1919,7 @@ public class ReliefMap extends javax.swing.JFrame {
     private javax.swing.JComboBox<String> jComboBox1;
     private javax.swing.JComboBox<String> jComboBox2;
     private javax.swing.JComboBox<String> jComboBox3;
+    private javax.swing.JComboBox<String> jComboBox4;
     private javax.swing.JLabel jLabel1;
     private javax.swing.JLabel jLabel10;
     private javax.swing.JLabel jLabel11;
@@ -1734,6 +1947,9 @@ public class ReliefMap extends javax.swing.JFrame {
     private javax.swing.JLabel jLabel31;
     private javax.swing.JLabel jLabel32;
     private javax.swing.JLabel jLabel33;
+    private javax.swing.JLabel jLabel34;
+    private javax.swing.JLabel jLabel35;
+    private javax.swing.JLabel jLabel36;
     private javax.swing.JLabel jLabel4;
     private javax.swing.JLabel jLabel5;
     private javax.swing.JLabel jLabel6;
@@ -1741,8 +1957,10 @@ public class ReliefMap extends javax.swing.JFrame {
     private javax.swing.JLabel jLabel8;
     private javax.swing.JLabel jLabel9;
     private javax.swing.JList<String> jList1;
+    private com.toedter.calendar.JMonthChooser jMonthChooser1;
     private javax.swing.JPanel jPanel1;
     private javax.swing.JPanel jPanel10;
+    private javax.swing.JPanel jPanel11;
     private javax.swing.JPanel jPanel2;
     private javax.swing.JPanel jPanel3;
     private javax.swing.JPanel jPanel4;
@@ -1757,6 +1975,7 @@ public class ReliefMap extends javax.swing.JFrame {
     private javax.swing.JScrollPane jScrollPane4;
     private com.toedter.components.JSpinField jSpinField1;
     private com.toedter.components.JSpinField jSpinField2;
+    private javax.swing.JSpinner jSpinner1;
     private javax.swing.JTabbedPane jTabbedPane1;
     private javax.swing.JTable jTable1;
     private javax.swing.JTable jTable2;
