@@ -135,7 +135,7 @@ public class login extends javax.swing.JFrame {
         if(rs.next()){
           String pass = rs.getString("Password");
           if(password.equals(pass)){
-             Map map = new Map();
+             ReliefMap map = new ReliefMap();
              map.setVisible(true);
              dispose();
           }else{
