@@ -8,14 +8,15 @@ import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
-import java.io.Serializable;
+import java.awt.Font;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.util.List;
 import javax.swing.JOptionPane;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.ResultSet;
-import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
@@ -25,20 +26,22 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import javax.swing.DefaultComboBoxModel;
-import javax.swing.DefaultListCellRenderer;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
-import javax.swing.JList;
 import javax.swing.JTable;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
-import org.jfree.chart.plot.XYPlot;
-import org.jfree.data.time.Day;
+import org.jfree.chart.labels.StandardPieSectionLabelGenerator;
+import org.jfree.chart.plot.CategoryPlot;
+import org.jfree.chart.plot.PiePlot;
+import org.jfree.chart.plot.PlotOrientation;
+import org.jfree.chart.renderer.category.BarRenderer;
+import org.jfree.data.category.DefaultCategoryDataset;
+import org.jfree.data.general.DefaultPieDataset;
 import org.jfree.data.time.TimeSeries;
-import org.jfree.data.time.TimeSeriesCollection;
 
 /**
  *
@@ -88,8 +91,9 @@ public class ReliefMap extends javax.swing.JFrame {
     private List<Integer> itemIds = new ArrayList<>();
     private ChartPanel chartPanel;
     private TimeSeries series;
-    private TimeSeriesCollection dataset;
     private Map<String, TimeSeries> seriesMap = new HashMap<>();
+    private DefaultCategoryDataset dataset;
+    private DefaultPieDataset pieDataset = new DefaultPieDataset();
 
     /**
      * Creates new form Map
@@ -108,9 +112,9 @@ public class ReliefMap extends javax.swing.JFrame {
         updateButtonVisibility();
         populateItemComboBox();
         initializeChart();
+        jDateChooser1.addPropertyChangeListener("date", evt -> refreshChart());
         refreshChart();
-        jMonthChooser1.addPropertyChangeListener("month", evt -> refreshChart());
-        jMonthChooser1.addPropertyChangeListener("year", evt -> refreshChart());
+        jDateChooser1.setDate(new Date()); // Set default to today
 
     }
 
@@ -594,28 +598,36 @@ public class ReliefMap extends javax.swing.JFrame {
         }
     }
 
-    private void populateevacueetable() {
-        String[] columnNames = {"Name", "Age", "Origin"};
-        DefaultTableModel tableModel = new DefaultTableModel(columnNames, 0);
-        try (Connection conn = DatabaseConnection.getConnection()) {
-            String query = "SELECT Name, Age, Origin FROM evacuees WHERE RoomID = ?";
-            PreparedStatement pst = conn.prepareStatement(query);
-            pst.setInt(1, selectedRoomID);
-            ResultSet rs = pst.executeQuery();
-
-            while (rs.next()) {
-                String name = rs.getString("Name");
-                int age = rs.getInt("Age");
-                String sex = rs.getString("Origin");
-
-                Object[] rowdata = {name, age, sex};
-                tableModel.addRow(rowdata);
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
+   private void populateevacueetable() {
+    String[] columnNames = {"EvacueeID", "Name", "Age", "Origin"}; // Add EvacueeID
+    DefaultTableModel model = new DefaultTableModel(columnNames, 0);
+    
+    try (Connection conn = DatabaseConnection.getConnection()) {
+        String query = "SELECT EvacueeID, Name, Age, Origin FROM evacuees WHERE RoomID = ?";
+        PreparedStatement pst = conn.prepareStatement(query);
+        pst.setInt(1, selectedRoomID);
+        ResultSet rs = pst.executeQuery();
+        
+        while (rs.next()) {
+            Object[] row = {
+                rs.getInt("EvacueeID"), // Include this
+                rs.getString("Name"),
+                rs.getInt("Age"),
+                rs.getString("Origin")
+            };
+            model.addRow(row);
         }
-        jTable2.setModel(tableModel);
+    } catch (SQLException e) {
+        e.printStackTrace();
     }
+    
+    jTable2.setModel(model);
+    
+    // Hide EvacueeID column (if needed)
+    jTable2.getColumnModel().getColumn(0).setMinWidth(0);
+    jTable2.getColumnModel().getColumn(0).setMaxWidth(0);
+    jTable2.getColumnModel().getColumn(0).setWidth(0);
+}
 // this is for the office
 
     private void fetchEvacuees() {
@@ -689,99 +701,83 @@ public class ReliefMap extends javax.swing.JFrame {
         return (selectedIndex == -1) ? -1 : itemIds.get(selectedIndex);
     }
 
-    private void initializeChart() {
-        // Create dataset
-        dataset = new TimeSeriesCollection();
+  private void initializeChart() {
+    // Clear existing data and rebuild chart
+    pieDataset.clear();
+    
+    JFreeChart chart = ChartFactory.createPieChart(
+        "Supply Usage by Category", 
+        pieDataset, 
+        true, true, false
+    );
+    
+    // Customize appearance
+    chart.setBackgroundPaint(Color.WHITE);
+    PiePlot plot = (PiePlot) chart.getPlot();
+    plot.setBackgroundPaint(Color.WHITE);
+    plot.setLabelGenerator(new StandardPieSectionLabelGenerator("{0}: {1} ({2})"));
+    plot.setNoDataMessage("No usage data available");
+    
+    // Update UI component
+    jPanel11.removeAll();
+    jPanel11.setLayout(new BorderLayout());
+    
+    // Initialize the class-level chartPanel variable
+    chartPanel = new ChartPanel(chart);
+    
+    // Set the preferred size to match the panel
+    Dimension panelSize = new Dimension(769, 502);
+    chartPanel.setPreferredSize(panelSize);
+    
+    // Also restrict the maximum drawing size
+    chartPanel.setMaximumDrawWidth(panelSize.width);
+    chartPanel.setMaximumDrawHeight(panelSize.height);
+    
+    jPanel11.add(chartPanel, BorderLayout.CENTER);
+    jPanel11.revalidate();
+    jPanel11.repaint();
+}
 
-        // Create chart
-        JFreeChart chart = ChartFactory.createTimeSeriesChart(
-                "Daily Supply Usage",
-                "Date",
-                "Quantity Used",
-                dataset,
-                true,
-                true,
-                false
-        );
-
-        // Customize chart
-        chart.setBackgroundPaint(Color.WHITE);
-        XYPlot plot = (XYPlot) chart.getPlot();
-        plot.setBackgroundPaint(Color.WHITE);
-        plot.setRangeGridlinePaint(Color.LIGHT_GRAY);
-
-        // Create chart panel
-        chartPanel = new ChartPanel(chart);
-        chartPanel.setPreferredSize(new Dimension(763, 496)); // Match panel size
-
-        // Set layout and add to jPanel11
-        jPanel11.setLayout(new BorderLayout());
-        jPanel11.add(chartPanel, BorderLayout.CENTER);
-        jPanel11.revalidate(); // Refresh the panel
+private void refreshChart() {
+    pieDataset.clear();
+    
+    // Set default date to today if not set
+    if (jDateChooser1.getDate() == null) {
+        jDateChooser1.setDate(new Date());
     }
-    // Add this method
-
-    private void updateChart(int itemId, Date usageDate, int quantity) {
-        String itemName = "";
-        try (Connection conn = DatabaseConnection.getConnection()) {
-            PreparedStatement pst = conn.prepareStatement(
-                    "SELECT Name FROM Donations WHERE ItemID = ?");
-            pst.setInt(1, itemId);
-            ResultSet rs = pst.executeQuery();
-            if (rs.next()) {
-                itemName = rs.getString("Name");
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
+    
+    try (Connection conn = DatabaseConnection.getConnection()) {
+        String query = "SELECT d.Category, SUM(ds.QuantityUsed) AS total " +
+                       "FROM DailySupplyUsage ds " +
+                       "JOIN Donations d ON ds.ItemID = d.ItemID " +
+                       "WHERE ds.CenterID = ? " +
+                       "AND DATE(ds.UsageDate) = ? " +
+                       "GROUP BY d.Category";
+        
+        PreparedStatement pst = conn.prepareStatement(query);
+        pst.setInt(1, selectedCenterID);
+        pst.setDate(2, new java.sql.Date(jDateChooser1.getDate().getTime()));
+        
+        ResultSet rs = pst.executeQuery();
+        
+        while (rs.next()) {
+            String category = rs.getString("Category");
+            int total = rs.getInt("total");
+            pieDataset.setValue(category, total);
         }
-
-        // Corrected series handling
-        TimeSeries itemSeries = null;
-        for (int i = 0; i < dataset.getSeriesCount(); i++) {
-            TimeSeries s = dataset.getSeries(i);
-            if (s.getKey().equals(itemName)) {
-                itemSeries = s;
-                break;
-            }
+        
+        // Handle empty data case
+        if (pieDataset.getItemCount() == 0) {
+            pieDataset.setValue("No Data", 1);
         }
-
-        if (itemSeries == null) {
-            itemSeries = new TimeSeries(itemName); // Create new TimeSeries
-            dataset.addSeries(itemSeries); // Add to collection
-        }
-
-        // Corrected date handling
-        itemSeries.add(new Day(usageDate), quantity);
+    } catch (SQLException e) {
+        e.printStackTrace();
     }
-
-    private void refreshChart() {
-        dataset.removeAllSeries();
-        seriesMap.clear();
-
-        try (Connection conn = DatabaseConnection.getConnection()) {
-            String query = "SELECT d.Name AS ItemName, DATE(du.UsageDate) AS UsageDay, SUM(du.QuantityUsed) AS TotalUsed "
-                    + "FROM DailySupplyUsage du "
-                    + "JOIN Donations d ON du.ItemID = d.ItemID "
-                    + "WHERE du.CenterID = ? "
-                    + "AND YEAR(du.UsageDate) = ? "
-                    + "AND MONTH(du.UsageDate) = ? "
-                    + "GROUP BY d.Name, UsageDay "
-                    + "ORDER BY UsageDay";
-
-            PreparedStatement pst = conn.prepareStatement(query);
-            pst.setInt(1, selectedCenterID);
-            Calendar cal = Calendar.getInstance();
-            pst.setInt(2, cal.get(Calendar.YEAR));
-            pst.setInt(3, cal.get(Calendar.MONTH) + 1);
-
-            ResultSet rs = pst.executeQuery();
-
-            // ... rest of the method remains the same ...
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
+    
+    if (chartPanel != null) {
+        chartPanel.repaint();
     }
-
+}
     /**
      * This method is called from within the constructor to initialize the form.
      * WARNING: Do NOT modify this code. The content of this method is always
@@ -869,6 +865,7 @@ public class ReliefMap extends javax.swing.JFrame {
         jLabel31 = new javax.swing.JLabel();
         jLabel33 = new javax.swing.JLabel();
         jLabel36 = new javax.swing.JLabel();
+        jButton22 = new javax.swing.JButton();
         jPanel7 = new javax.swing.JPanel();
         jPanel8 = new javax.swing.JPanel();
         jPanel9 = new javax.swing.JPanel();
@@ -878,9 +875,9 @@ public class ReliefMap extends javax.swing.JFrame {
         jLabel34 = new javax.swing.JLabel();
         jLabel35 = new javax.swing.JLabel();
         jPanel11 = new javax.swing.JPanel();
-        jMonthChooser1 = new com.toedter.calendar.JMonthChooser();
         itemComboBox = new javax.swing.JComboBox<>();
         remainingQuantityLabel = new javax.swing.JLabel();
+        jDateChooser1 = new com.toedter.calendar.JDateChooser();
         jLabel32 = new javax.swing.JLabel();
         jScrollPane4 = new javax.swing.JScrollPane();
         jList1 = new javax.swing.JList<>();
@@ -1404,6 +1401,13 @@ public class ReliefMap extends javax.swing.JFrame {
                 .addContainerGap(96, Short.MAX_VALUE))
         );
 
+        jButton22.setText("Remove");
+        jButton22.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                jButton22ActionPerformed(evt);
+            }
+        });
+
         javax.swing.GroupLayout jPanel6Layout = new javax.swing.GroupLayout(jPanel6);
         jPanel6.setLayout(jPanel6Layout);
         jPanel6Layout.setHorizontalGroup(
@@ -1435,15 +1439,16 @@ public class ReliefMap extends javax.swing.JFrame {
                 .addGap(26, 26, 26))
             .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel6Layout.createSequentialGroup()
                 .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                .addGroup(jPanel6Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel6Layout.createSequentialGroup()
-                        .addComponent(jLabel21, javax.swing.GroupLayout.PREFERRED_SIZE, 137, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addGap(168, 168, 168)
-                        .addComponent(jPanel10, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addGap(51, 51, 51))
-                    .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel6Layout.createSequentialGroup()
-                        .addComponent(jButton20)
-                        .addGap(611, 611, 611))))
+                .addComponent(jLabel21, javax.swing.GroupLayout.PREFERRED_SIZE, 137, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGap(168, 168, 168)
+                .addComponent(jPanel10, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGap(51, 51, 51))
+            .addGroup(jPanel6Layout.createSequentialGroup()
+                .addGap(220, 220, 220)
+                .addComponent(jButton20)
+                .addGap(18, 18, 18)
+                .addComponent(jButton22)
+                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
         );
         jPanel6Layout.setVerticalGroup(
             jPanel6Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -1481,7 +1486,9 @@ public class ReliefMap extends javax.swing.JFrame {
                             .addComponent(jScrollPane2, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)))
                     .addComponent(jScrollPane3, javax.swing.GroupLayout.PREFERRED_SIZE, 173, javax.swing.GroupLayout.PREFERRED_SIZE))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addComponent(jButton20)
+                .addGroup(jPanel6Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(jButton20)
+                    .addComponent(jButton22))
                 .addContainerGap(190, Short.MAX_VALUE))
         );
 
@@ -1542,6 +1549,12 @@ public class ReliefMap extends javax.swing.JFrame {
 
         remainingQuantityLabel.setText("0");
 
+        jDateChooser1.addPropertyChangeListener(new java.beans.PropertyChangeListener() {
+            public void propertyChange(java.beans.PropertyChangeEvent evt) {
+                jDateChooser1PropertyChange(evt);
+            }
+        });
+
         javax.swing.GroupLayout jPanel9Layout = new javax.swing.GroupLayout(jPanel9);
         jPanel9.setLayout(jPanel9Layout);
         jPanel9Layout.setHorizontalGroup(
@@ -1551,21 +1564,24 @@ public class ReliefMap extends javax.swing.JFrame {
                     .addGroup(jPanel9Layout.createSequentialGroup()
                         .addGroup(jPanel9Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                             .addGroup(jPanel9Layout.createSequentialGroup()
-                                .addContainerGap()
-                                .addComponent(jLabel30, javax.swing.GroupLayout.PREFERRED_SIZE, 79, javax.swing.GroupLayout.PREFERRED_SIZE))
-                            .addGroup(jPanel9Layout.createSequentialGroup()
                                 .addGap(17, 17, 17)
-                                .addGroup(jPanel9Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                                    .addComponent(jMonthChooser1, javax.swing.GroupLayout.PREFERRED_SIZE, 125, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                    .addGroup(jPanel9Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                                        .addComponent(quantitySpinner, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                        .addComponent(jLabel34, javax.swing.GroupLayout.PREFERRED_SIZE, 67, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                        .addComponent(jLabel35, javax.swing.GroupLayout.PREFERRED_SIZE, 55, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                        .addComponent(itemComboBox, javax.swing.GroupLayout.PREFERRED_SIZE, 139, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                        .addComponent(remainingQuantityLabel, javax.swing.GroupLayout.PREFERRED_SIZE, 65, javax.swing.GroupLayout.PREFERRED_SIZE)))))
+                                .addGroup(jPanel9Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                    .addComponent(jLabel34, javax.swing.GroupLayout.PREFERRED_SIZE, 67, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                    .addComponent(jLabel35, javax.swing.GroupLayout.PREFERRED_SIZE, 55, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                    .addComponent(itemComboBox, javax.swing.GroupLayout.PREFERRED_SIZE, 139, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                    .addComponent(remainingQuantityLabel, javax.swing.GroupLayout.PREFERRED_SIZE, 65, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                            .addGroup(jPanel9Layout.createSequentialGroup()
+                                .addContainerGap()
+                                .addGroup(jPanel9Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                    .addGroup(jPanel9Layout.createSequentialGroup()
+                                        .addGap(6, 6, 6)
+                                        .addComponent(jDateChooser1, javax.swing.GroupLayout.PREFERRED_SIZE, 119, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                    .addComponent(jLabel30, javax.swing.GroupLayout.PREFERRED_SIZE, 79, javax.swing.GroupLayout.PREFERRED_SIZE))))
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED))
                     .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel9Layout.createSequentialGroup()
-                        .addComponent(jButton21)
+                        .addGroup(jPanel9Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                            .addComponent(quantitySpinner, javax.swing.GroupLayout.PREFERRED_SIZE, 104, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(jButton21))
                         .addGap(41, 41, 41)))
                 .addComponent(jPanel11, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                 .addContainerGap())
@@ -1577,7 +1593,7 @@ public class ReliefMap extends javax.swing.JFrame {
                     .addGroup(jPanel9Layout.createSequentialGroup()
                         .addComponent(jLabel30)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(jMonthChooser1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addComponent(jDateChooser1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                         .addGap(88, 88, 88)
                         .addComponent(jLabel34)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
@@ -1727,6 +1743,8 @@ public class ReliefMap extends javax.swing.JFrame {
         // TODO add your handling code here:
         jTabbedPane1.setSelectedIndex(4);
         updateButtonVisibility();
+        initializeChart();
+        refreshChart();
     }//GEN-LAST:event_jButton2ActionPerformed
 
     private void jComboBox1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jComboBox1ActionPerformed
@@ -1929,11 +1947,10 @@ public class ReliefMap extends javax.swing.JFrame {
                 updateStmt.setInt(1, quantity);
                 updateStmt.setInt(2, itemId);
                 updateStmt.executeUpdate();
-
+                refreshChart();
                 JOptionPane.showMessageDialog(this, "Usage recorded successfully!");
                 populateItemComboBox();
                 populatetable();
-                updateChart(itemId, currentDate, quantity);
             } else {
                 JOptionPane.showMessageDialog(this, "Not enough quantity available");
             }
@@ -1960,6 +1977,66 @@ public class ReliefMap extends javax.swing.JFrame {
             }
         }
     }//GEN-LAST:event_itemComboBoxActionPerformed
+
+    private void jDateChooser1PropertyChange(java.beans.PropertyChangeEvent evt) {//GEN-FIRST:event_jDateChooser1PropertyChange
+        // TODO add your handling code here:
+        refreshChart();
+    }//GEN-LAST:event_jDateChooser1PropertyChange
+
+    private void jButton22ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton22ActionPerformed
+        // TODO add your handling code here:
+          // Get selected row
+    int selectedRow = jTable2.getSelectedRow();
+    if (selectedRow == -1) {
+        JOptionPane.showMessageDialog(this, "Please select an evacuee to delete.");
+        return;
+    }
+
+    // Confirm deletion
+    int confirm = JOptionPane.showConfirmDialog(this, 
+        "Are you sure you want to remove this evacuee?", 
+        "Confirm Remove", JOptionPane.YES_NO_OPTION);
+    if (confirm != JOptionPane.YES_OPTION) return;
+
+    // Get EvacueeID from the table (assuming it's in the first column)
+    int evacueeID = (int) jTable2.getValueAt(selectedRow, 0); // Column 0 = EvacueeID
+
+    // Delete from database
+    try (Connection conn = DatabaseConnection.getConnection()) {
+        // Step 1: Get the RoomID of the evacuee
+        String getRoomQuery = "SELECT RoomID FROM evacuees WHERE EvacueeID = ?";
+        try (PreparedStatement roomPst = conn.prepareStatement(getRoomQuery)) {
+            roomPst.setInt(1, evacueeID);
+            ResultSet rs = roomPst.executeQuery();
+            
+            if (rs.next()) {
+                int roomID = rs.getInt("RoomID");
+
+                // Step 2: Delete the evacuee
+                String deleteQuery = "DELETE FROM evacuees WHERE EvacueeID = ?";
+                try (PreparedStatement deletePst = conn.prepareStatement(deleteQuery)) {
+                    deletePst.setInt(1, evacueeID);
+                    deletePst.executeUpdate();
+                }
+
+                // Step 3: Update room occupancy
+                String updateQuery = "UPDATE Rooms SET CurrentOccupants = CurrentOccupants - 1 WHERE RoomID = ?";
+                try (PreparedStatement updatePst = conn.prepareStatement(updateQuery)) {
+                    updatePst.setInt(1, roomID);
+                    updatePst.executeUpdate();
+                }
+
+                // Refresh data
+                populateevacueetable(); // Reload evacuee table
+                countResidentsInRoom(); // Update room occupancy display
+                JOptionPane.showMessageDialog(this, "Evacuee deleted successfully!");
+            }
+        }
+    } catch (SQLException e) {
+        e.printStackTrace();
+        JOptionPane.showMessageDialog(this, "Error: " + e.getMessage());
+    }
+    }//GEN-LAST:event_jButton22ActionPerformed
 
     /**
      * @param args the command line arguments
@@ -2015,6 +2092,7 @@ public class ReliefMap extends javax.swing.JFrame {
     private javax.swing.JButton jButton2;
     private javax.swing.JButton jButton20;
     private javax.swing.JButton jButton21;
+    private javax.swing.JButton jButton22;
     private javax.swing.JButton jButton3;
     private javax.swing.JButton jButton4;
     private javax.swing.JButton jButton5;
@@ -2026,6 +2104,7 @@ public class ReliefMap extends javax.swing.JFrame {
     private javax.swing.JComboBox<String> jComboBox1;
     private javax.swing.JComboBox<String> jComboBox2;
     private javax.swing.JComboBox<String> jComboBox3;
+    private com.toedter.calendar.JDateChooser jDateChooser1;
     private javax.swing.JLabel jLabel1;
     private javax.swing.JLabel jLabel10;
     private javax.swing.JLabel jLabel11;
@@ -2063,7 +2142,6 @@ public class ReliefMap extends javax.swing.JFrame {
     private javax.swing.JLabel jLabel8;
     private javax.swing.JLabel jLabel9;
     private javax.swing.JList<String> jList1;
-    private com.toedter.calendar.JMonthChooser jMonthChooser1;
     private javax.swing.JPanel jPanel1;
     private javax.swing.JPanel jPanel10;
     private javax.swing.JPanel jPanel11;

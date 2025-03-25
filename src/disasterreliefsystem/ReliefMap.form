@@ -916,18 +916,17 @@
                           </Group>
                           <Group type="102" alignment="1" attributes="0">
                               <EmptySpace max="32767" attributes="0"/>
-                              <Group type="103" groupAlignment="0" attributes="0">
-                                  <Group type="102" alignment="1" attributes="0">
-                                      <Component id="jLabel21" min="-2" pref="137" max="-2" attributes="0"/>
-                                      <EmptySpace min="-2" pref="168" max="-2" attributes="0"/>
-                                      <Component id="jPanel10" min="-2" max="-2" attributes="0"/>
-                                      <EmptySpace min="-2" pref="51" max="-2" attributes="0"/>
-                                  </Group>
-                                  <Group type="102" alignment="1" attributes="0">
-                                      <Component id="jButton20" min="-2" max="-2" attributes="0"/>
-                                      <EmptySpace min="-2" pref="611" max="-2" attributes="0"/>
-                                  </Group>
-                              </Group>
+                              <Component id="jLabel21" min="-2" pref="137" max="-2" attributes="0"/>
+                              <EmptySpace min="-2" pref="168" max="-2" attributes="0"/>
+                              <Component id="jPanel10" min="-2" max="-2" attributes="0"/>
+                              <EmptySpace min="-2" pref="51" max="-2" attributes="0"/>
+                          </Group>
+                          <Group type="102" alignment="0" attributes="0">
+                              <EmptySpace min="-2" pref="220" max="-2" attributes="0"/>
+                              <Component id="jButton20" min="-2" max="-2" attributes="0"/>
+                              <EmptySpace type="separate" max="-2" attributes="0"/>
+                              <Component id="jButton22" min="-2" max="-2" attributes="0"/>
+                              <EmptySpace max="32767" attributes="0"/>
                           </Group>
                       </Group>
                     </DimensionLayout>
@@ -977,7 +976,10 @@
                                   <Component id="jScrollPane3" min="-2" pref="173" max="-2" attributes="0"/>
                               </Group>
                               <EmptySpace type="unrelated" max="-2" attributes="0"/>
-                              <Component id="jButton20" min="-2" max="-2" attributes="0"/>
+                              <Group type="103" groupAlignment="3" attributes="0">
+                                  <Component id="jButton20" alignment="3" min="-2" max="-2" attributes="0"/>
+                                  <Component id="jButton22" alignment="3" min="-2" max="-2" attributes="0"/>
+                              </Group>
                               <EmptySpace pref="190" max="32767" attributes="0"/>
                           </Group>
                       </Group>
@@ -1176,6 +1178,14 @@
                         </Component>
                       </SubComponents>
                     </Container>
+                    <Component class="javax.swing.JButton" name="jButton22">
+                      <Properties>
+                        <Property name="text" type="java.lang.String" value="Remove"/>
+                      </Properties>
+                      <Events>
+                        <EventHandler event="actionPerformed" listener="java.awt.event.ActionListener" parameters="java.awt.event.ActionEvent" handler="jButton22ActionPerformed"/>
+                      </Events>
+                    </Component>
                   </SubComponents>
                 </Container>
               </SubComponents>
@@ -1275,27 +1285,32 @@
                                       <Group type="102" attributes="0">
                                           <Group type="103" groupAlignment="0" attributes="0">
                                               <Group type="102" alignment="0" attributes="0">
-                                                  <EmptySpace max="-2" attributes="0"/>
-                                                  <Component id="jLabel30" min="-2" pref="79" max="-2" attributes="0"/>
+                                                  <EmptySpace min="-2" pref="17" max="-2" attributes="0"/>
+                                                  <Group type="103" groupAlignment="0" attributes="0">
+                                                      <Component id="jLabel34" alignment="0" min="-2" pref="67" max="-2" attributes="0"/>
+                                                      <Component id="jLabel35" alignment="0" min="-2" pref="55" max="-2" attributes="0"/>
+                                                      <Component id="itemComboBox" min="-2" pref="139" max="-2" attributes="0"/>
+                                                      <Component id="remainingQuantityLabel" alignment="0" min="-2" pref="65" max="-2" attributes="0"/>
+                                                  </Group>
                                               </Group>
                                               <Group type="102" alignment="0" attributes="0">
-                                                  <EmptySpace min="-2" pref="17" max="-2" attributes="0"/>
-                                                  <Group type="103" groupAlignment="1" attributes="0">
-                                                      <Component id="jMonthChooser1" min="-2" pref="125" max="-2" attributes="0"/>
-                                                      <Group type="103" groupAlignment="0" attributes="0">
-                                                          <Component id="quantitySpinner" alignment="0" min="-2" max="-2" attributes="0"/>
-                                                          <Component id="jLabel34" alignment="0" min="-2" pref="67" max="-2" attributes="0"/>
-                                                          <Component id="jLabel35" alignment="0" min="-2" pref="55" max="-2" attributes="0"/>
-                                                          <Component id="itemComboBox" min="-2" pref="139" max="-2" attributes="0"/>
-                                                          <Component id="remainingQuantityLabel" alignment="0" min="-2" pref="65" max="-2" attributes="0"/>
+                                                  <EmptySpace max="-2" attributes="0"/>
+                                                  <Group type="103" groupAlignment="0" attributes="0">
+                                                      <Group type="102" attributes="0">
+                                                          <EmptySpace min="6" pref="6" max="-2" attributes="0"/>
+                                                          <Component id="jDateChooser1" min="-2" pref="119" max="-2" attributes="0"/>
                                                       </Group>
+                                                      <Component id="jLabel30" min="-2" pref="79" max="-2" attributes="0"/>
                                                   </Group>
                                               </Group>
                                           </Group>
                                           <EmptySpace max="-2" attributes="0"/>
                                       </Group>
                                       <Group type="102" alignment="1" attributes="0">
-                                          <Component id="jButton21" min="-2" max="-2" attributes="0"/>
+                                          <Group type="103" groupAlignment="1" attributes="0">
+                                              <Component id="quantitySpinner" alignment="1" min="-2" pref="104" max="-2" attributes="0"/>
+                                              <Component id="jButton21" min="-2" max="-2" attributes="0"/>
+                                          </Group>
                                           <EmptySpace min="-2" pref="41" max="-2" attributes="0"/>
                                       </Group>
                                   </Group>
@@ -1311,7 +1326,7 @@
                                       <Group type="102" attributes="0">
                                           <Component id="jLabel30" min="-2" max="-2" attributes="0"/>
                                           <EmptySpace max="-2" attributes="0"/>
-                                          <Component id="jMonthChooser1" min="-2" max="-2" attributes="0"/>
+                                          <Component id="jDateChooser1" min="-2" max="-2" attributes="0"/>
                                           <EmptySpace min="-2" pref="88" max="-2" attributes="0"/>
                                           <Component id="jLabel34" min="-2" max="-2" attributes="0"/>
                                           <EmptySpace max="-2" attributes="0"/>
@@ -1383,8 +1398,6 @@
                             </DimensionLayout>
                           </Layout>
                         </Container>
-                        <Component class="com.toedter.calendar.JMonthChooser" name="jMonthChooser1">
-                        </Component>
                         <Component class="javax.swing.JComboBox" name="itemComboBox">
                           <Events>
                             <EventHandler event="actionPerformed" listener="java.awt.event.ActionListener" parameters="java.awt.event.ActionEvent" handler="itemComboBoxActionPerformed"/>
@@ -1397,6 +1410,11 @@
                           <Properties>
                             <Property name="text" type="java.lang.String" value="0"/>
                           </Properties>
+                        </Component>
+                        <Component class="com.toedter.calendar.JDateChooser" name="jDateChooser1">
+                          <Events>
+                            <EventHandler event="propertyChange" listener="java.beans.PropertyChangeListener" parameters="java.beans.PropertyChangeEvent" handler="jDateChooser1PropertyChange"/>
+                          </Events>
                         </Component>
                       </SubComponents>
                     </Container>
