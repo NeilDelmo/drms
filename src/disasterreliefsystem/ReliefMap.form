@@ -1274,29 +1274,29 @@
                                   <Group type="103" groupAlignment="0" attributes="0">
                                       <Group type="102" attributes="0">
                                           <Group type="103" groupAlignment="0" attributes="0">
-                                              <Group type="102" attributes="0">
-                                                  <EmptySpace min="-2" pref="17" max="-2" attributes="0"/>
-                                                  <Group type="103" groupAlignment="0" attributes="0">
-                                                      <Group type="102" alignment="0" attributes="0">
-                                                          <EmptySpace min="-2" pref="36" max="-2" attributes="0"/>
-                                                          <Component id="jButton21" min="-2" max="-2" attributes="0"/>
-                                                      </Group>
-                                                      <Component id="jComboBox4" alignment="0" min="-2" pref="147" max="-2" attributes="0"/>
-                                                      <Component id="jSpinner1" alignment="0" min="-2" max="-2" attributes="0"/>
-                                                      <Component id="jLabel34" alignment="0" min="-2" pref="67" max="-2" attributes="0"/>
-                                                      <Component id="jLabel35" alignment="0" min="-2" pref="55" max="-2" attributes="0"/>
-                                                  </Group>
-                                              </Group>
                                               <Group type="102" alignment="0" attributes="0">
                                                   <EmptySpace max="-2" attributes="0"/>
                                                   <Component id="jLabel30" min="-2" pref="79" max="-2" attributes="0"/>
                                               </Group>
+                                              <Group type="102" alignment="0" attributes="0">
+                                                  <EmptySpace min="-2" pref="17" max="-2" attributes="0"/>
+                                                  <Group type="103" groupAlignment="1" attributes="0">
+                                                      <Component id="jMonthChooser1" min="-2" pref="125" max="-2" attributes="0"/>
+                                                      <Group type="103" groupAlignment="0" attributes="0">
+                                                          <Component id="quantitySpinner" alignment="0" min="-2" max="-2" attributes="0"/>
+                                                          <Component id="jLabel34" alignment="0" min="-2" pref="67" max="-2" attributes="0"/>
+                                                          <Component id="jLabel35" alignment="0" min="-2" pref="55" max="-2" attributes="0"/>
+                                                          <Component id="itemComboBox" min="-2" pref="139" max="-2" attributes="0"/>
+                                                          <Component id="remainingQuantityLabel" alignment="0" min="-2" pref="65" max="-2" attributes="0"/>
+                                                      </Group>
+                                                  </Group>
+                                              </Group>
                                           </Group>
-                                          <EmptySpace min="-2" pref="32" max="-2" attributes="0"/>
+                                          <EmptySpace max="-2" attributes="0"/>
                                       </Group>
                                       <Group type="102" alignment="1" attributes="0">
-                                          <Component id="jMonthChooser1" min="-2" pref="125" max="-2" attributes="0"/>
-                                          <EmptySpace max="-2" attributes="0"/>
+                                          <Component id="jButton21" min="-2" max="-2" attributes="0"/>
+                                          <EmptySpace min="-2" pref="41" max="-2" attributes="0"/>
                                       </Group>
                                   </Group>
                                   <Component id="jPanel11" max="32767" attributes="0"/>
@@ -1315,12 +1315,14 @@
                                           <EmptySpace min="-2" pref="88" max="-2" attributes="0"/>
                                           <Component id="jLabel34" min="-2" max="-2" attributes="0"/>
                                           <EmptySpace max="-2" attributes="0"/>
-                                          <Component id="jComboBox4" min="-2" max="-2" attributes="0"/>
+                                          <Component id="itemComboBox" min="-2" max="-2" attributes="0"/>
                                           <EmptySpace max="-2" attributes="0"/>
-                                          <Component id="jLabel35" min="-2" max="-2" attributes="0"/>
-                                          <EmptySpace min="-2" pref="4" max="-2" attributes="0"/>
-                                          <Component id="jSpinner1" min="-2" max="-2" attributes="0"/>
+                                          <Component id="remainingQuantityLabel" min="-2" max="-2" attributes="0"/>
                                           <EmptySpace type="unrelated" max="-2" attributes="0"/>
+                                          <Component id="jLabel35" min="-2" max="-2" attributes="0"/>
+                                          <EmptySpace max="-2" attributes="0"/>
+                                          <Component id="quantitySpinner" min="-2" max="-2" attributes="0"/>
+                                          <EmptySpace max="-2" attributes="0"/>
                                           <Component id="jButton21" min="-2" max="-2" attributes="0"/>
                                       </Group>
                                       <Group type="102" alignment="0" attributes="0">
@@ -1339,17 +1341,15 @@
                             <Property name="text" type="java.lang.String" value="Daily Supplies:"/>
                           </Properties>
                         </Component>
-                        <Component class="javax.swing.JComboBox" name="jComboBox4">
-                          <AuxValues>
-                            <AuxValue name="JavaCodeGenerator_TypeParameters" type="java.lang.String" value="&lt;String&gt;"/>
-                          </AuxValues>
-                        </Component>
-                        <Component class="javax.swing.JSpinner" name="jSpinner1">
+                        <Component class="javax.swing.JSpinner" name="quantitySpinner">
                         </Component>
                         <Component class="javax.swing.JButton" name="jButton21">
                           <Properties>
                             <Property name="text" type="java.lang.String" value="Submit"/>
                           </Properties>
+                          <Events>
+                            <EventHandler event="actionPerformed" listener="java.awt.event.ActionListener" parameters="java.awt.event.ActionEvent" handler="jButton21ActionPerformed"/>
+                          </Events>
                         </Component>
                         <Component class="javax.swing.JLabel" name="jLabel34">
                           <Properties>
@@ -1373,7 +1373,7 @@
                           <Layout>
                             <DimensionLayout dim="0">
                               <Group type="103" groupAlignment="0" attributes="0">
-                                  <EmptySpace min="0" pref="0" max="32767" attributes="0"/>
+                                  <EmptySpace min="0" pref="763" max="32767" attributes="0"/>
                               </Group>
                             </DimensionLayout>
                             <DimensionLayout dim="1">
@@ -1384,6 +1384,19 @@
                           </Layout>
                         </Container>
                         <Component class="com.toedter.calendar.JMonthChooser" name="jMonthChooser1">
+                        </Component>
+                        <Component class="javax.swing.JComboBox" name="itemComboBox">
+                          <Events>
+                            <EventHandler event="actionPerformed" listener="java.awt.event.ActionListener" parameters="java.awt.event.ActionEvent" handler="itemComboBoxActionPerformed"/>
+                          </Events>
+                          <AuxValues>
+                            <AuxValue name="JavaCodeGenerator_TypeParameters" type="java.lang.String" value="&lt;String&gt;"/>
+                          </AuxValues>
+                        </Component>
+                        <Component class="javax.swing.JLabel" name="remainingQuantityLabel">
+                          <Properties>
+                            <Property name="text" type="java.lang.String" value="0"/>
+                          </Properties>
                         </Component>
                       </SubComponents>
                     </Container>

@@ -4,8 +4,11 @@
  */
 package disasterreliefsystem;
 
+import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Dimension;
+import java.io.Serializable;
 import java.util.List;
 import javax.swing.JOptionPane;
 import java.sql.Connection;
@@ -17,42 +20,31 @@ import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import javax.swing.DefaultComboBoxModel;
+import javax.swing.DefaultListCellRenderer;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
+import javax.swing.JList;
 import javax.swing.JTable;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
+import org.jfree.chart.ChartFactory;
+import org.jfree.chart.ChartPanel;
+import org.jfree.chart.JFreeChart;
+import org.jfree.chart.plot.XYPlot;
+import org.jfree.data.time.Day;
+import org.jfree.data.time.TimeSeries;
+import org.jfree.data.time.TimeSeriesCollection;
 
 /**
  *
  * @author Neil
  */
 public class ReliefMap extends javax.swing.JFrame {
-
-    class DonationItem {
-
-        private final int itemId;
-        private final String displayText;
-
-        public DonationItem(int itemId, String name, Date expirationDate) {
-            this.itemId = itemId;
-            this.displayText = name + (expirationDate != null
-                    ? " (Exp: " + new SimpleDateFormat("yyyy-MM-dd").format(expirationDate) + ")" : "");
-        }
-
-        public int getItemId() {
-            return itemId;
-        }
-
-        @Override
-        public String toString() {
-            return displayText;
-        }
-    }
 
     class EvacueeSearchResult {
 
@@ -93,13 +85,17 @@ public class ReliefMap extends javax.swing.JFrame {
 
     private int selectedCenterID = 1;
     private int selectedRoomID = -1;
+    private List<Integer> itemIds = new ArrayList<>();
+    private ChartPanel chartPanel;
+    private TimeSeries series;
+    private TimeSeriesCollection dataset;
+    private Map<String, TimeSeries> seriesMap = new HashMap<>();
 
     /**
      * Creates new form Map
      */
     public ReliefMap() {
         initComponents();
-        setupCustomComboBox();
         setLocationRelativeTo(null);
         jTable1.setDefaultRenderer(Object.class, new CustomTableCellRenderer());
         populatetable();
@@ -110,14 +106,12 @@ public class ReliefMap extends javax.swing.JFrame {
         jTabbedPane1.addChangeListener(e -> updateButtonVisibility());
         jList1.setModel(new DefaultListModel<>());
         updateButtonVisibility();
+        populateItemComboBox();
+        initializeChart();
+        refreshChart();
+        jMonthChooser1.addPropertyChangeListener("month", evt -> refreshChart());
+        jMonthChooser1.addPropertyChangeListener("year", evt -> refreshChart());
 
-    }
-
-    private void setupCustomComboBox() {
-        // Set custom model and renderer
-        jComboBox4.setModel(new DefaultComboBoxModel<DonationItem>());
-        jComboBox4.setRenderer(new DonationItemRenderer());
-        populateDonationComboBox();
     }
 
     //design
@@ -659,104 +653,132 @@ public class ReliefMap extends javax.swing.JFrame {
         jList1.setModel(listModel);
     }
 
-    private void populateDonationComboBox() {
-        DefaultComboBoxModel<DonationItem> model = (DefaultComboBoxModel<DonationItem>) jComboBox4.getModel();
-        model.removeAllElements();
-        try (Connection conn = DatabaseConnection.getConnection()) {
-            String query = "SELECT ItemID, Name, ExpirationDate, CurrentQuantity "
-                    + "FROM Donations "
-                    + "WHERE (ExpirationDate > CURDATE() OR ExpirationDate IS NULL) "
-                    + "AND CurrentQuantity > 0 "
-                    + "AND CenterID = ?";
+    private void populateItemComboBox() {
+        DefaultComboBoxModel<String> model = new DefaultComboBoxModel<>();
+        itemIds.clear(); // Clear previous items
 
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            String query = "SELECT ItemID, Name, CurrentQuantity, ExpirationDate "
+                    + "FROM Donations "
+                    + "WHERE CenterID = ? "
+                    + "AND (ExpirationDate >= CURDATE() OR ExpirationDate IS NULL) "
+                    + "AND CurrentQuantity > 0";
             PreparedStatement pst = conn.prepareStatement(query);
             pst.setInt(1, selectedCenterID);
             ResultSet rs = pst.executeQuery();
 
             while (rs.next()) {
-                DonationItem item = new DonationItem(
-                        rs.getInt("ItemID"),
-                        rs.getString("Name"),
-                        rs.getDate("ExpirationDate")
-                );
-                model.addElement(item);
+                int itemId = rs.getInt("ItemID");
+                String itemName = rs.getString("Name");
+                int quantity = rs.getInt("CurrentQuantity");
+
+                // Create display text
+                String displayText = itemName + " (" + quantity + " left)";
+                model.addElement(displayText);
+                itemIds.add(itemId); // Store ID in parallel list
             }
-            jComboBox4.setModel(model);
         } catch (SQLException e) {
             e.printStackTrace();
         }
+
+        itemComboBox.setModel(model);
     }
 
-    private void jButton21ActionPerformed(java.awt.event.ActionEvent evt) {
-        DonationItem selectedItem = (DonationItem) jComboBox4.getSelectedItem();
-        if (selectedItem == null) {
-            JOptionPane.showMessageDialog(this, "Please select an item!");
-            return;
+    private int getSelectedItemId() {
+        int selectedIndex = itemComboBox.getSelectedIndex();
+        return (selectedIndex == -1) ? -1 : itemIds.get(selectedIndex);
+    }
+
+    private void initializeChart() {
+        // Create dataset
+        dataset = new TimeSeriesCollection();
+
+        // Create chart
+        JFreeChart chart = ChartFactory.createTimeSeriesChart(
+                "Daily Supply Usage",
+                "Date",
+                "Quantity Used",
+                dataset,
+                true,
+                true,
+                false
+        );
+
+        // Customize chart
+        chart.setBackgroundPaint(Color.WHITE);
+        XYPlot plot = (XYPlot) chart.getPlot();
+        plot.setBackgroundPaint(Color.WHITE);
+        plot.setRangeGridlinePaint(Color.LIGHT_GRAY);
+
+        // Create chart panel
+        chartPanel = new ChartPanel(chart);
+        chartPanel.setPreferredSize(new Dimension(763, 496)); // Match panel size
+
+        // Set layout and add to jPanel11
+        jPanel11.setLayout(new BorderLayout());
+        jPanel11.add(chartPanel, BorderLayout.CENTER);
+        jPanel11.revalidate(); // Refresh the panel
+    }
+    // Add this method
+
+    private void updateChart(int itemId, Date usageDate, int quantity) {
+        String itemName = "";
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            PreparedStatement pst = conn.prepareStatement(
+                    "SELECT Name FROM Donations WHERE ItemID = ?");
+            pst.setInt(1, itemId);
+            ResultSet rs = pst.executeQuery();
+            if (rs.next()) {
+                itemName = rs.getString("Name");
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
 
-        int quantityToUse = (Integer) jSpinner1.getValue();
-        if (quantityToUse <= 0) {
-            JOptionPane.showMessageDialog(this, "Quantity must be positive!");
-            return;
+        // Corrected series handling
+        TimeSeries itemSeries = null;
+        for (int i = 0; i < dataset.getSeriesCount(); i++) {
+            TimeSeries s = dataset.getSeries(i);
+            if (s.getKey().equals(itemName)) {
+                itemSeries = s;
+                break;
+            }
         }
+
+        if (itemSeries == null) {
+            itemSeries = new TimeSeries(itemName); // Create new TimeSeries
+            dataset.addSeries(itemSeries); // Add to collection
+        }
+
+        // Corrected date handling
+        itemSeries.add(new Day(usageDate), quantity);
+    }
+
+    private void refreshChart() {
+        dataset.removeAllSeries();
+        seriesMap.clear();
 
         try (Connection conn = DatabaseConnection.getConnection()) {
-            conn.setAutoCommit(false); // Start transaction
+            String query = "SELECT d.Name AS ItemName, DATE(du.UsageDate) AS UsageDay, SUM(du.QuantityUsed) AS TotalUsed "
+                    + "FROM DailySupplyUsage du "
+                    + "JOIN Donations d ON du.ItemID = d.ItemID "
+                    + "WHERE du.CenterID = ? "
+                    + "AND YEAR(du.UsageDate) = ? "
+                    + "AND MONTH(du.UsageDate) = ? "
+                    + "GROUP BY d.Name, UsageDay "
+                    + "ORDER BY UsageDay";
 
-            // Check current quantity
-            String checkQuery = "SELECT CurrentQuantity, ExpirationDate "
-                    + "FROM Donations WHERE ItemID = ?";
-            PreparedStatement checkPst = conn.prepareStatement(checkQuery);
-            checkPst.setInt(1, selectedItem.getItemId());
-            ResultSet rs = checkPst.executeQuery();
+            PreparedStatement pst = conn.prepareStatement(query);
+            pst.setInt(1, selectedCenterID);
+            Calendar cal = Calendar.getInstance();
+            pst.setInt(2, cal.get(Calendar.YEAR));
+            pst.setInt(3, cal.get(Calendar.MONTH) + 1);
 
-            if (rs.next()) {
-                int currentQty = rs.getInt("CurrentQuantity");
-                Date expirationDate = rs.getDate("ExpirationDate");
+            ResultSet rs = pst.executeQuery();
 
-                // Validate quantity and expiration
-                if (currentQty < quantityToUse) {
-                    JOptionPane.showMessageDialog(this, "Not enough stock available!");
-                    return;
-                }
-
-                if (expirationDate != null && expirationDate.before(new Date())) {
-                    JOptionPane.showMessageDialog(this, "Item has expired!");
-                    return;
-                }
-            }
-
-            // Record usage
-            String insertQuery = "INSERT INTO DailySupplyUsage "
-                    + "(ItemID, CenterID, QuantityUsed, UsageDate) "
-                    + "VALUES (?, ?, ?, CURDATE())";
-            PreparedStatement insertPst = conn.prepareStatement(insertQuery);
-            insertPst.setInt(1, selectedItem.getItemId());
-            insertPst.setInt(2, selectedCenterID);
-            insertPst.setInt(3, quantityToUse);
-            insertPst.executeUpdate();
-
-            // Update donation quantity
-            String updateQuery = "UPDATE Donations "
-                    + "SET CurrentQuantity = CurrentQuantity - ? "
-                    + "WHERE ItemID = ?";
-            PreparedStatement updatePst = conn.prepareStatement(updateQuery);
-            updatePst.setInt(1, quantityToUse);
-            updatePst.setInt(2, selectedItem.getItemId());
-            int affectedRows = updatePst.executeUpdate();
-
-            if (affectedRows > 0) {
-                conn.commit();
-                JOptionPane.showMessageDialog(this, "Usage recorded successfully!");
-                populateDonationComboBox(); // Refresh combo box
-                populatetable(); // Refresh donations table
-            } else {
-                conn.rollback();
-                JOptionPane.showMessageDialog(this, "Failed to record usage!");
-            }
-        } catch (SQLException ex) {
-            ex.printStackTrace();
-            JOptionPane.showMessageDialog(this, "Database error: " + ex.getMessage());
+            // ... rest of the method remains the same ...
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
     }
 
@@ -851,13 +873,14 @@ public class ReliefMap extends javax.swing.JFrame {
         jPanel8 = new javax.swing.JPanel();
         jPanel9 = new javax.swing.JPanel();
         jLabel30 = new javax.swing.JLabel();
-        jComboBox4 = new javax.swing.JComboBox<>();
-        jSpinner1 = new javax.swing.JSpinner();
+        quantitySpinner = new javax.swing.JSpinner();
         jButton21 = new javax.swing.JButton();
         jLabel34 = new javax.swing.JLabel();
         jLabel35 = new javax.swing.JLabel();
         jPanel11 = new javax.swing.JPanel();
         jMonthChooser1 = new com.toedter.calendar.JMonthChooser();
+        itemComboBox = new javax.swing.JComboBox<>();
+        remainingQuantityLabel = new javax.swing.JLabel();
         jLabel32 = new javax.swing.JLabel();
         jScrollPane4 = new javax.swing.JScrollPane();
         jList1 = new javax.swing.JList<>();
@@ -1488,6 +1511,11 @@ public class ReliefMap extends javax.swing.JFrame {
         jLabel30.setText("Daily Supplies:");
 
         jButton21.setText("Submit");
+        jButton21.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                jButton21ActionPerformed(evt);
+            }
+        });
 
         jLabel34.setText("Items:");
 
@@ -1499,12 +1527,20 @@ public class ReliefMap extends javax.swing.JFrame {
         jPanel11.setLayout(jPanel11Layout);
         jPanel11Layout.setHorizontalGroup(
             jPanel11Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGap(0, 0, Short.MAX_VALUE)
+            .addGap(0, 763, Short.MAX_VALUE)
         );
         jPanel11Layout.setVerticalGroup(
             jPanel11Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGap(0, 496, Short.MAX_VALUE)
         );
+
+        itemComboBox.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                itemComboBoxActionPerformed(evt);
+            }
+        });
+
+        remainingQuantityLabel.setText("0");
 
         javax.swing.GroupLayout jPanel9Layout = new javax.swing.GroupLayout(jPanel9);
         jPanel9.setLayout(jPanel9Layout);
@@ -1515,22 +1551,22 @@ public class ReliefMap extends javax.swing.JFrame {
                     .addGroup(jPanel9Layout.createSequentialGroup()
                         .addGroup(jPanel9Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                             .addGroup(jPanel9Layout.createSequentialGroup()
-                                .addGap(17, 17, 17)
-                                .addGroup(jPanel9Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                                    .addGroup(jPanel9Layout.createSequentialGroup()
-                                        .addGap(36, 36, 36)
-                                        .addComponent(jButton21))
-                                    .addComponent(jComboBox4, javax.swing.GroupLayout.PREFERRED_SIZE, 147, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                    .addComponent(jSpinner1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                    .addComponent(jLabel34, javax.swing.GroupLayout.PREFERRED_SIZE, 67, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                    .addComponent(jLabel35, javax.swing.GroupLayout.PREFERRED_SIZE, 55, javax.swing.GroupLayout.PREFERRED_SIZE)))
-                            .addGroup(jPanel9Layout.createSequentialGroup()
                                 .addContainerGap()
-                                .addComponent(jLabel30, javax.swing.GroupLayout.PREFERRED_SIZE, 79, javax.swing.GroupLayout.PREFERRED_SIZE)))
-                        .addGap(32, 32, 32))
+                                .addComponent(jLabel30, javax.swing.GroupLayout.PREFERRED_SIZE, 79, javax.swing.GroupLayout.PREFERRED_SIZE))
+                            .addGroup(jPanel9Layout.createSequentialGroup()
+                                .addGap(17, 17, 17)
+                                .addGroup(jPanel9Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                                    .addComponent(jMonthChooser1, javax.swing.GroupLayout.PREFERRED_SIZE, 125, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                    .addGroup(jPanel9Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                        .addComponent(quantitySpinner, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                        .addComponent(jLabel34, javax.swing.GroupLayout.PREFERRED_SIZE, 67, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                        .addComponent(jLabel35, javax.swing.GroupLayout.PREFERRED_SIZE, 55, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                        .addComponent(itemComboBox, javax.swing.GroupLayout.PREFERRED_SIZE, 139, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                        .addComponent(remainingQuantityLabel, javax.swing.GroupLayout.PREFERRED_SIZE, 65, javax.swing.GroupLayout.PREFERRED_SIZE)))))
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED))
                     .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel9Layout.createSequentialGroup()
-                        .addComponent(jMonthChooser1, javax.swing.GroupLayout.PREFERRED_SIZE, 125, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)))
+                        .addComponent(jButton21)
+                        .addGap(41, 41, 41)))
                 .addComponent(jPanel11, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                 .addContainerGap())
         );
@@ -1545,12 +1581,14 @@ public class ReliefMap extends javax.swing.JFrame {
                         .addGap(88, 88, 88)
                         .addComponent(jLabel34)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(jComboBox4, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addComponent(itemComboBox, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(jLabel35)
-                        .addGap(4, 4, 4)
-                        .addComponent(jSpinner1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addComponent(remainingQuantityLabel)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                        .addComponent(jLabel35)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addComponent(quantitySpinner, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                         .addComponent(jButton21))
                     .addGroup(jPanel9Layout.createSequentialGroup()
                         .addGap(14, 14, 14)
@@ -1818,6 +1856,7 @@ public class ReliefMap extends javax.swing.JFrame {
         // TODO add your handling code here:
         addEvacuee();
         populateevacueetable();
+        countResidentsInRoom();
     }//GEN-LAST:event_jButton20ActionPerformed
 
     private void jButton3ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton3ActionPerformed
@@ -1854,6 +1893,73 @@ public class ReliefMap extends javax.swing.JFrame {
             }
         }
     }//GEN-LAST:event_jList1ValueChanged
+
+    private void jButton21ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton21ActionPerformed
+        int itemId = getSelectedItemId();
+        if (itemId == -1) {
+            JOptionPane.showMessageDialog(this, "Please select an item");
+            return;
+        }
+
+        int quantity = (int) quantitySpinner.getValue();
+
+        // Get current date
+        java.sql.Date currentDate = new java.sql.Date(System.currentTimeMillis());
+
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            // Check available quantity
+            PreparedStatement checkStmt = conn.prepareStatement(
+                    "SELECT CurrentQuantity FROM Donations WHERE ItemID = ?");
+            checkStmt.setInt(1, itemId);
+            ResultSet rs = checkStmt.executeQuery();
+
+            if (rs.next() && rs.getInt(1) >= quantity) {
+                // Insert usage record with current date
+                PreparedStatement insertStmt = conn.prepareStatement(
+                        "INSERT INTO DailySupplyUsage (ItemID, CenterID, QuantityUsed, UsageDate) VALUES (?, ?, ?, ?)");
+                insertStmt.setInt(1, itemId);
+                insertStmt.setInt(2, selectedCenterID);
+                insertStmt.setInt(3, quantity);
+                insertStmt.setDate(4, currentDate); // Use current date
+                insertStmt.executeUpdate();
+
+                // Update donation quantity
+                PreparedStatement updateStmt = conn.prepareStatement(
+                        "UPDATE Donations SET CurrentQuantity = CurrentQuantity - ? WHERE ItemID = ?");
+                updateStmt.setInt(1, quantity);
+                updateStmt.setInt(2, itemId);
+                updateStmt.executeUpdate();
+
+                JOptionPane.showMessageDialog(this, "Usage recorded successfully!");
+                populateItemComboBox();
+                populatetable();
+                updateChart(itemId, currentDate, quantity);
+            } else {
+                JOptionPane.showMessageDialog(this, "Not enough quantity available");
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }//GEN-LAST:event_jButton21ActionPerformed
+
+    private void itemComboBoxActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_itemComboBoxActionPerformed
+        int selectedIndex = itemComboBox.getSelectedIndex();
+
+        if (selectedIndex != -1) {
+            int itemId = itemIds.get(selectedIndex); // Get ID from parallel list
+            try (Connection conn = DatabaseConnection.getConnection()) {
+                PreparedStatement pst = conn.prepareStatement(
+                        "SELECT CurrentQuantity FROM Donations WHERE ItemID = ?");
+                pst.setInt(1, itemId);
+                ResultSet rs = pst.executeQuery();
+                if (rs.next()) {
+                    remainingQuantityLabel.setText("Available: " + rs.getInt(1));
+                }
+            } catch (SQLException ex) {
+                ex.printStackTrace();
+            }
+        }
+    }//GEN-LAST:event_itemComboBoxActionPerformed
 
     /**
      * @param args the command line arguments
@@ -1894,6 +2000,7 @@ public class ReliefMap extends javax.swing.JFrame {
 
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
+    private javax.swing.JComboBox<String> itemComboBox;
     private javax.swing.JButton jButton1;
     private javax.swing.JButton jButton10;
     private javax.swing.JButton jButton11;
@@ -1919,7 +2026,6 @@ public class ReliefMap extends javax.swing.JFrame {
     private javax.swing.JComboBox<String> jComboBox1;
     private javax.swing.JComboBox<String> jComboBox2;
     private javax.swing.JComboBox<String> jComboBox3;
-    private javax.swing.JComboBox<String> jComboBox4;
     private javax.swing.JLabel jLabel1;
     private javax.swing.JLabel jLabel10;
     private javax.swing.JLabel jLabel11;
@@ -1975,7 +2081,6 @@ public class ReliefMap extends javax.swing.JFrame {
     private javax.swing.JScrollPane jScrollPane4;
     private com.toedter.components.JSpinField jSpinField1;
     private com.toedter.components.JSpinField jSpinField2;
-    private javax.swing.JSpinner jSpinner1;
     private javax.swing.JTabbedPane jTabbedPane1;
     private javax.swing.JTable jTable1;
     private javax.swing.JTable jTable2;
@@ -1985,7 +2090,9 @@ public class ReliefMap extends javax.swing.JFrame {
     private javax.swing.JTextField jTextField4;
     private javax.swing.JPanel mapevacuationpanel;
     private javax.swing.JPanel mappanel;
+    private javax.swing.JSpinner quantitySpinner;
     private javax.swing.JPanel registrarpanel;
+    private javax.swing.JLabel remainingQuantityLabel;
     private javax.swing.JPanel roompanel;
     // End of variables declaration//GEN-END:variables
 }
